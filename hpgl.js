@@ -422,8 +422,18 @@ let Models = {
     buffer: 255,
     papers: {
       list: ["A", "A4"],
-      A4: {long: 10900, short: 7650},
-      A: {long: 10300, short: 7650} // labeled as "US" on this model
+      A4: {long: 10900, short: 7650,
+        margins: {
+          portrait: {top: 440, right: 400, bottom: 560, left: 360}, // plotting range x: 10900 (272.5mm)
+          landscape: {top: 360, right: 420, bottom: 400, left: 560} // plotting range y: 7650 (191.25mm)
+        },
+      },
+      A: {long: 10300, short: 7650,
+        margins: {
+          portrait: {top: 440, right: 400, bottom: 560, left: 360}, // plotting range x: 10900 (272.5mm)
+          landscape: {top: 620, right: 420, bottom: 400, left: 520} // plotting range y: 7650 (191.25mm)
+        }
+      } // labeled as "US" on this model
     },
     resolution: {
       x: 40,
@@ -777,7 +787,7 @@ let Plotter = function() {
   Object.defineProperty(this, "DEVICE_RS232_DELAY", {
     enumerable: true,
     writable: false,
-    value: 375
+    value: 5000
   });
 
   /**
@@ -1031,6 +1041,7 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
 
   // Try to open transport layer
   this.transport.open((error) => {
+    console.log('Transport is open', error);
 
     // Prepare listeners for later
     let onDataListener = this._onData.bind(this);
@@ -1038,6 +1049,7 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
 
     // Tear down function when connection fails
     function fail(err) {
+      console.log('Failed', err);
       if (this.connected) this.transport.close();
       this.transport.removeListener('data', onDataListener);
       this.transport.removeListener('error', onErrorListener);
@@ -1066,7 +1078,7 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
     }, this.DEVICE_RS232_DELAY);
 
     this.getRs232Error((err) => {
-
+      console.log('RS232 error');
       clearTimeout(timeout);
 
       // If an error occured, we're done!
@@ -1081,7 +1093,7 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
         return;
       }
 
-      // console.log("rs2323 err code", err.code);
+     console.log("rs2323 err code", err.code);
 
       this.initialize(options, callback);
 
@@ -1089,6 +1101,7 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
 
   });
 
+  console.log('Init done');
   return this;
 
 };
@@ -1204,11 +1217,14 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
   // Retrieve device model. This must be done before other instructions because they depend on the
   // `characteristics` property being set.
   this.getModel((data) => {
+    console.log('Model data is: ', data);
 
     // Assign model (or GENERIC if model cannot be found)
     if (Models[data]) {
+      console.log('Not generic');
       this.characteristics = Models[data];
     } else {
+      console.log('Generic');
       this.characteristics = Models["GENERIC"];
     }
 
@@ -1234,14 +1250,15 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
     // block mode), we must first send an ESC.E (hence the call to getRs232Error) and read the
     // response before sending an ESC.L to retrieve buffer size.
     this.getRs232Error((err) => {
-
+    
       if (err.code !== 0) {
+        console.log('Error code reading buffer');
         if (typeof callback === "function") callback(new Error(err.message));
         return;
       }
 
       this.queue(this.RS232_PREFIX + "L", (data) => {
-
+        console.log('Got back data: ', data);
         this.characteristics.buffer = data;
 
         // FIRST HP-GL INSTRUCTIONS START HERE!! IT IS IMPORTANT THAT THOSE INSTRUCTIONS HAPPEN
@@ -1267,21 +1284,18 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
 
         // Check if the user-requested orientation, matches the device's default orientation
         // (landscape).
-        if (this.orientation === "landscape") {
-
-          this.queue("RO0");    // do not rotate (or rotate back to default)
-
-        } else {
-
-          // Check if the device supports rotation (not all do)
-          if ( this.characteristics.instructions.includes("RO") ) {
-            this.queue("RO90");   // rotate to other orientation
-          } else {
-            throw new Error("The device does not support the '" + this.orientation + "' orientation.");
-          }
-
-        }
-
+        // if (this.orientation === "landscape") {
+        //   this.queue("RO0");    // do not rotate (or rotate back to default)
+        // } else {
+        //
+        //   // Check if the device supports rotation (not all do)
+        //   if ( this.characteristics.instructions.includes("RO") ) {
+        //     this.queue("RO90");   // rotate to other orientation
+        //   } else {
+        //     throw new Error("The device does not support the '" + this.orientation + "' orientation.");
+        //   }
+        //
+        // }
         this.queue("IP");                                       // reassign P1 and P2
         this.queue("IW", this._onReady.bind(this, callback));   // reset plotting window
 
@@ -1332,7 +1346,7 @@ Plotter.prototype.getPaperSize = function(metric = true) {
  * string containing the model name.
  */
 Plotter.prototype.getModel = function(callback) {
-
+   console.log('Getting model');
   let cancel = false;
 
   // Advanced devices (HP7475A) will be able to respond to OI instructions even if the plotter is
@@ -1342,7 +1356,7 @@ Plotter.prototype.getModel = function(callback) {
   // certain timeframe, we try OI. We cannot do it the other way around because the instruction
   // would be queued for execution at a later time which is probably not a good idea.
   let timeoutId = setTimeout(() => {
-
+    console.log('In error clearing timeout');
     // If the timeout is triggered, the function set previously must not be carried out.
     cancel = true;
 
@@ -1350,9 +1364,10 @@ Plotter.prototype.getModel = function(callback) {
     // get rid of before proceeding. It is important to wait for the response even if we do not use
     // it because otherwise, it will pollute the next data handler.
     this.send(this.RS232_PREFIX + "E", () => {
-
+      console.log('Sending OI');
       // We don't care about the actual error. We just need to flush it from the device.
       this.queue("OI", (data) => {
+         console.log('Data from OI', data);
         if (typeof callback === "function") callback(data);
       }, {waitForResponse: true});
 
@@ -1360,11 +1375,12 @@ Plotter.prototype.getModel = function(callback) {
 
   }, this.DEVICE_RS232_DELAY);
 
-  this.queue(this.RS232_PREFIX + "A", (data) => {
+  /*this.queue(this.RS232_PREFIX + "A", (data) => {
+    console.log('Got A Response');
     clearTimeout(timeoutId);
     let [model] = data.split(",");
     if (typeof callback === "function" && !cancel) callback(model);
-  }, {waitForResponse: true});
+  }, {waitForResponse: true});*/
 
 };
 
@@ -1757,7 +1773,7 @@ Plotter.prototype.destroy = function(callback = null) {
  * @return {Object} An object whose **x** and **y** properties have been transformed.
  */
 Plotter.prototype._toAbsoluteHpglCoordinates = function(x, y) {
-
+  console.log('PAPER TYPE IS: ', this.paper);
   let p = this.characteristics.papers[this.paper];
 
 
@@ -1788,12 +1804,18 @@ Plotter.prototype._toAbsoluteHpglCoordinates = function(x, y) {
 
 
   // Compensate for margins
+  console.log('***** Top margin is: ', p.margins[this.orientation].top);
   x -= p.margins[this.orientation].left;
+
+  console.log('Original Y was: ', y)
   y -= p.margins[this.orientation].top;
+  console.log('Y is now: ', y);
 
   if (this.orientation === "landscape") {
+    console.log('ORIENTATION IS LANDSCAPE');
     y = this.characteristics.papers[this.paper].short - y;
   } else {
+    console.log('ORIENTATION IS PORTRATE');
     x = this.characteristics.papers[this.paper].short - x;
   }
 
@@ -1903,7 +1925,7 @@ Plotter.prototype._onError = function(error) {
  * @returns {Plotter} Returns the `Plotter` object to allow method chaining.
  */
 Plotter.prototype.send = function(instruction, callback = null, waitForResponse = false) {
-
+  console.log('Sending');
   // Check if the plotter is connected or an output file has been specified
   if (!this.connected && !this._outputFile) {
     throw new Error(
@@ -1930,7 +1952,7 @@ Plotter.prototype.send = function(instruction, callback = null, waitForResponse 
   // We actually send data to the device only if there is a connection. Otherwise, we assume we are
   // sending the data to the output file and simply trigger the callback.
   if (this.connected) {
-
+    console.log('Yes I am connected');
     // Check maximum instruction length (we must first check if the buffer size is available because
     // it will not be for the very first instructions.
     if (
@@ -1938,6 +1960,7 @@ Plotter.prototype.send = function(instruction, callback = null, waitForResponse 
       this.characteristics.buffer &&
       instruction.length > this.characteristics.buffer
     ) {
+      console.log('In this weird function');
       this._stopAndEmptyQueue();
       throw new RangeError(
         `Maximum HP-GL instruction length cannot be larger than device buffer. Instruction is ` +
@@ -1946,22 +1969,26 @@ Plotter.prototype.send = function(instruction, callback = null, waitForResponse 
     }
 
     // Send the instruction. Wait for plotter response if required
+    console.log('waitForResponse is', waitForResponse);
     if (waitForResponse) {
 
-      // console.info("Send and wait for response: " + instruction);
-
+      console.log("Send and wait for response: " + instruction);
       this.once("data", (data) => {
-        // console.info("Received response: " + data);
+        console.log("Received response: " + data);
         if (typeof callback === "function") callback(data);
       });
       this.transport.write(instruction);
 
     } else {
 
-      // console.info("Send: " + instruction);
+      console.log("Send: " + instruction);
 
       this.transport.write(instruction, (results) => {
-        if (typeof callback === "function") callback(results);
+        console.log('Write callback called');
+        if (typeof callback === "function") {
+		console.log('Calling nested callbakc');
+		callback(results);
+	}
       });
 
     }

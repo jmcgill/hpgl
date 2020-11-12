@@ -1,0 +1,60 @@
+# Rotate to landscape
+RO0;
+
+# Set P1 and P2 points to default
+IP;
+
+# Turn off the clipping window
+IW;
+
+# Select Pen 1
+SP1;
+
+# Move to these coordinates
+PU39440,-31990;
+
+# Standard character set
+SS;
+
+# Set capital letter bounding box
+SI0.1870,0.2690;
+
+# Set the direction that the label goes
+DI1.0000,0.0000;
+
+# Set the slant (italic) of the characters
+SL0.0000;
+
+# Set the default character set
+CS0;
+LBH
+CS0;
+LBe
+CS0;
+LBl
+CS0;
+LBl
+CS0;
+LBo
+CS0;
+LB,
+CS0;
+LB 
+CS0;
+LBW
+CS0;
+LBo
+CS0;
+LBr
+CS0;
+LBl
+CS0;
+LBd
+CS0;
+LB!
+RO0;
+IP;
+IW;
+SP1;
+PU240,6010;
+ER400,-400;
