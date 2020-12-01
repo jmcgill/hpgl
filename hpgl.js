@@ -1093,8 +1093,9 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
         return;
       }
 
-     console.log("rs2323 err code", err.code);
+      console.log("rs2323 err code", err.code);
 
+      console.log('Calling initialize');
       this.initialize(options, callback);
 
     });
@@ -1128,13 +1129,16 @@ Plotter.prototype.connect = function(transport, options = {}, callback = null) {
  * In case of error, the function will receive an `Error` object
  */
 Plotter.prototype.initialize = function(options, callback) {
-
   // Abort any lingering device instructions
+  console.log('Sending J');
   this.send(this.RS232_PREFIX + "J");
 
   // Abort any lingering HP-GL instructions
+  console.log('Sending K');
   this.send(this.RS232_PREFIX + "K");
 
+
+  console.log('Configure offer environment');
   this._configurePlottingEnvironment(options, callback);
 
 };
@@ -1234,6 +1238,7 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
       options.paper.toUpperCase &&
       this.characteristics.papers.list.includes(options.paper.toUpperCase())
     ) {
+      console.log('Seeing paper to A3');
       this.paper = options.paper.toUpperCase();
     }
 
@@ -1243,6 +1248,7 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
       options.orientation.toLowerCase &&
       ORIENTATIONS.includes(options.orientation.toLowerCase())
     ) {
+      console.log('Setting orientation to ', options.orientation.toLowerCase())
       this.orientation = options.orientation.toLowerCase();
     }
 
@@ -1250,7 +1256,7 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
     // block mode), we must first send an ESC.E (hence the call to getRs232Error) and read the
     // response before sending an ESC.L to retrieve buffer size.
     this.getRs232Error((err) => {
-    
+
       if (err.code !== 0) {
         console.log('Error code reading buffer');
         if (typeof callback === "function") callback(new Error(err.message));
@@ -1279,23 +1285,23 @@ Plotter.prototype._configurePlottingEnvironment = function(options = {}, callbac
         // Inform device of the paper size we wish to use. This is not necessary on devices that use
         // the same orientation for all paper sizes.
         if ( this.characteristics.papers[this.paper].hasOwnProperty("psCode") ) {
+          console.log('Sending PS Code ', this.characteristics.papers[this.paper].psCode);
           this.queue("PS" + this.characteristics.papers[this.paper].psCode);
         }
 
         // Check if the user-requested orientation, matches the device's default orientation
         // (landscape).
-        // if (this.orientation === "landscape") {
-        //   this.queue("RO0");    // do not rotate (or rotate back to default)
-        // } else {
-        //
-        //   // Check if the device supports rotation (not all do)
-        //   if ( this.characteristics.instructions.includes("RO") ) {
-        //     this.queue("RO90");   // rotate to other orientation
-        //   } else {
-        //     throw new Error("The device does not support the '" + this.orientation + "' orientation.");
-        //   }
-        //
-        // }
+        if (this.orientation === "landscape") {
+          this.queue("RO0");    // do not rotate (or rotate back to default)
+        } else {
+          // Check if the device supports rotation (not all do)
+          if ( this.characteristics.instructions.includes("RO") ) {
+            this.queue("RO90");   // rotate to other orientation
+          } else {
+            throw new Error("The device does not support the '" + this.orientation + "' orientation.");
+          }
+
+        }
         this.queue("IP");                                       // reassign P1 and P2
         this.queue("IW", this._onReady.bind(this, callback));   // reset plotting window
 
@@ -1804,12 +1810,12 @@ Plotter.prototype._toAbsoluteHpglCoordinates = function(x, y) {
 
 
   // Compensate for margins
-  console.log('***** Top margin is: ', p.margins[this.orientation].top);
-  x -= p.margins[this.orientation].left;
+  // console.log('***** Top margin is: ', p.margins[this.orientation].top);
+  // x -= p.margins[this.orientation].left;
 
-  console.log('Original Y was: ', y)
-  y -= p.margins[this.orientation].top;
-  console.log('Y is now: ', y);
+  // console.log('Original Y was: ', y)
+  // y -= p.margins[this.orientation].top;
+  // console.log('Y is now: ', y);
 
   if (this.orientation === "landscape") {
     console.log('ORIENTATION IS LANDSCAPE');
@@ -1971,7 +1977,10 @@ Plotter.prototype.send = function(instruction, callback = null, waitForResponse 
     // Send the instruction. Wait for plotter response if required
     console.log('waitForResponse is', waitForResponse);
     if (waitForResponse) {
-
+      console.log('Instruction length is: ' + instruction.length);
+      for (var i = 0; i < instruction.length; ++i) {
+        console.log('Char: ', i, instruction.charCodeAt(i));
+      }
       console.log("Send and wait for response: " + instruction);
       this.once("data", (data) => {
         console.log("Received response: " + data);
@@ -2402,7 +2411,14 @@ Plotter.prototype.drawRectangle = function(width, height, options = {}, callback
     this._toPlotterUnits(width),
     this._toPlotterUnits(height)
   );
-  this.queue("ER" + target.x + "," + target.y, callback);
+
+  if (options.fillType === 'crosshatch') {
+    let spacing = options.crosshatchSpacing || 40;
+    this.queue("FT4," + spacing + ",45");
+    this.queue("RR" + target.x + "," + target.y, callback);
+  } else {
+    this.queue("ER" + target.x + "," + target.y, callback);
+  }
 
   return this;
 
@@ -2808,7 +2824,7 @@ Plotter.prototype._processQueue = function() {
     // should the response never come in.
     this._retryTimeoutId = setTimeout(() => {
 
-      // console.warn("Warning: Bad communication with the device. Attempting once more.");
+      console.log("Warning: Bad communication with the device. Attempting once more.");
 
       // Dispatch fake event to prevent the previous callback from being executed and screwing
       // things up.

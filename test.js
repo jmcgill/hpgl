@@ -12,7 +12,11 @@ plotter
   .on("error", function (err) {
     console.log(err);
   })
-.connect(transport, {}, function(error) {
+.connect(transport, {
+  paper: "A4",
+  // orientation: "landscape",
+  // penThickness: 0.3
+}, function(error) {
   console.log('Connected');
   console.log('Plotter initialized');
   if (error) {
@@ -21,8 +25,10 @@ plotter
   }
 
   this
-    .selectPen(1)
-    .moveTo(2, 5)
-    .drawRectangle(1, 1)
+    .selectPen(4)
+    //.moveTo(6, 6)
+    //.drawRectangle(1, 1)
+
+  //this.penDown();
   this.stopCapturingToFile();
 });
